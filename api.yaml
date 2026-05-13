@@ -1,0 +1,468 @@
+openapi: 3.0.0
+info:
+  title: Hospital Management System API
+  description: Complete API specification for the HMS V2 Application.
+  version: 2.0.0
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Public
+  - name: Admin
+  - name: Doctor
+  - name: Patient
+
+paths:
+  # ==========================================
+  # AUTHENTICATION APIs
+  # ==========================================
+  /api/login:
+    post:
+      tags: [Auth]
+      summary: User Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Successful login (Returns JWT token)
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Account suspended
+
+  /api/register:
+    post:
+      tags: [Auth]
+      summary: Patient Registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                full_name:
+                  type: string
+                email:
+                  type: string
+                phone:
+                  type: string
+                age:
+                  type: integer
+      responses:
+        '201':
+          description: Patient registered successfully
+        '400':
+          description: Missing fields or username exists
+
+  # ==========================================
+  # PUBLIC & CACHED APIs
+  # ==========================================
+  /api/departments:
+    get:
+      tags: [Public]
+      summary: Get all hospital departments
+      security: []
+      responses:
+        '200':
+          description: A list of departments
+
+  /api/doctors:
+    get:
+      tags: [Public]
+      summary: Get all public doctor profiles
+      security: []
+      responses:
+        '200':
+          description: A list of available doctors
+
+  # ==========================================
+  # ADMIN APIs
+  # ==========================================
+  /api/admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Get aggregated admin dashboard data
+      responses:
+        '200':
+          description: System counts, charts, and lists
+
+  /api/admin/toggle_blacklist/{user_id}:
+    put:
+      tags: [Admin]
+      summary: Suspend or restore a user account
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User status toggled successfully
+
+  /api/department:
+    post:
+      tags: [Admin]
+      summary: Add a new department
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Department created
+
+  /api/admin/add_doctor:
+    post:
+      tags: [Admin]
+      summary: Register a new doctor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                full_name:
+                  type: string
+                department_id:
+                  type: integer
+                doctor_fees:
+                  type: integer
+                email:
+                  type: string
+                qualification:
+                  type: string
+                designation:
+                  type: string
+                experience:
+                  type: integer
+                intro:
+                  type: string
+      responses:
+        '201':
+          description: Doctor registered
+
+  /api/admin/doctor/{id}:
+    put:
+      tags: [Admin]
+      summary: Update a doctor's profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Profile updated
+    delete:
+      tags: [Admin]
+      summary: Remove a doctor from the system
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Doctor securely removed
+
+  /api/admin/patient/{id}:
+    put:
+      tags: [Admin]
+      summary: Update a patient's profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Profile updated
+    delete:
+      tags: [Admin]
+      summary: Remove a patient from the system
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Patient securely removed
+
+  /api/admin/patient/{id}/history:
+    get:
+      tags: [Admin]
+      summary: View a patient's medical history (Admin)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Returns patient history list
+
+  # ==========================================
+  # DOCTOR APIs
+  # ==========================================
+  /api/doctor/dashboard:
+    get:
+      tags: [Doctor]
+      summary: Get doctor's schedule and patient list
+      responses:
+        '200':
+          description: Doctor dashboard data
+
+  /api/doctor/availability:
+    post:
+      tags: [Doctor]
+      summary: Add new time slots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+      responses:
+        '201':
+          description: Availability added
+
+  /api/doctor/treatment/{appointment_id}:
+    post:
+      tags: [Doctor]
+      summary: Complete appointment and attach treatment
+      parameters:
+        - in: path
+          name: appointment_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                diagnosis:
+                  type: string
+                prescription:
+                  type: string
+                notes:
+                  type: string
+                visit_type:
+                  type: string
+                tests_done:
+                  type: string
+      responses:
+        '201':
+          description: Consultation saved
+
+  /api/doctor/appointment/{id}/cancel:
+    put:
+      tags: [Doctor]
+      summary: Cancel a scheduled appointment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Appointment cancelled
+
+  /api/doctor/patient/{id}/history:
+    get:
+      tags: [Doctor]
+      summary: View a patient's full medical history
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Patient's past treatments
+
+  # ==========================================
+  # PATIENT APIs
+  # ==========================================
+  /api/patient/dashboard:
+    get:
+      tags: [Patient]
+      summary: Get patient's upcoming appointments
+      responses:
+        '200':
+          description: Returns appointments and departments
+
+  /api/patient/profile:
+    get:
+      tags: [Patient]
+      summary: Get patient's own profile data
+      responses:
+        '200':
+          description: Patient profile details
+    put:
+      tags: [Patient]
+      summary: Update patient's own profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Profile updated successfully
+
+  /api/patient/search_doctors:
+    post:
+      tags: [Patient]
+      summary: Filter doctors by department or date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                department:
+                  type: string
+                date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Filtered list of doctors
+
+  /api/doctor/{id}/slots:
+    get:
+      tags: [Patient]
+      summary: Get available 30-min time slots for a doctor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of unbooked time slots
+
+  /api/patient/book:
+    post:
+      tags: [Patient]
+      summary: Book a new appointment slot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                doctor_id:
+                  type: integer
+                date:
+                  type: string
+                  format: date
+                time:
+                  type: string
+      responses:
+        '201':
+          description: Appointment booked
+        '409':
+          description: Slot was just taken
+
+  /api/patient/history:
+    get:
+      tags: [Patient]
+      summary: Get patient's own medical history
+      responses:
+        '200':
+          description: Completed appointments list
+
+  /api/patient/export_history:
+    post:
+      tags: [Patient]
+      summary: Trigger Celery job to generate CSV history
+      responses:
+        '200':
+          description: Export initiated
+
+  /api/patient/download_csv:
+    get:
+      tags: [Patient]
+      summary: Download the generated CSV file
+      responses:
+        '200':
+          description: Returns the CSV file as an attachment
+        '404':
+          description: No export found
