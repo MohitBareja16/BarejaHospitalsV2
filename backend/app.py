@@ -831,9 +831,14 @@ def create_admin():
             print("--- Admin account already exists. ---")
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        create_admin()
+    try:
+        with app.app_context():
+            db.create_all()
+            create_admin()
+        print("Database initialized successfully!")
+    except Exception as e:
+        print(f"Database initialization failed: {e}")
+        print("Continuing without database initialization...")
     
     # Use Gunicorn for production, Flask dev server for development
     if os.environ.get("FLASK_ENV") == "production":
