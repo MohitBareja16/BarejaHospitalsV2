@@ -25,45 +25,66 @@ from xhtml2pdf import pisa
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///hospital.db"
+# CORS Configuration - restrict to specific origins in production
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:5173").split(",")
+CORS(app, resources={r"/api/*": {"origins": cors_origins, "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]}})
+
+# Database Configuration
+env = os.environ.get("FLASK_ENV", "development")
+if env == "production":
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "postgresql://localhost/hospital_db")
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///hospital.db"
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["DEBUG"] = os.environ.get("FLASK_DEBUG", "False") == "True"
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret-futuristic-key")
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret-futuristic-key-change-in-production")
+app.config["PROPAGATE_EXCEPTIONS"] = True
 
 db.init_app(app)
 jwt = JWTManager(app)
 
 app.config['CACHE_TYPE'] = 'RedisCache'
-app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/1'
+app.config['CACHE_REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
 app.config['CACHE_DEFAULT_TIMEOUT'] = 300 
 
-cache = Cache(app)
+try:
+    cache = Cache(app)
+except Exception as e:
+    print(f"Warning: Redis cache not available. Error: {e}")
+    app.config['CACHE_TYPE'] = 'SimpleCache'
+    cache = Cache(app)
 
-app.config['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
-app.config['result_backend'] = 'redis://localhost:6379/0'
-app.config['TIMEZONE'] = 'Asia/Kolkata' 
+app.config['CELERY_BROKER_URL'] = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+app.config['result_backend'] = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+app.config['TIMEZONE'] = os.environ.get('TIMEZONE', 'UTC')
 
-celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+try:
+    celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+except:
+    print("⚠️  Celery/Redis disabled - background tasks won't run")
+    celery = None
 celery.conf.update(app.config)
 
+# Celery Beat schedule with proper cron expressions
 celery.conf.beat_schedule = {
     'send-daily-reminders-morning': {
         'task': 'app.send_daily_reminders',
-        'schedule': crontab('*')
+        'schedule': crontab(hour=8, minute=0),  # 8 AM daily
     },
     'send-monthly-doctor-reports': {
         'task': 'app.send_monthly_reports',
-        'schedule': crontab('*')
+        'schedule': crontab(day_of_month=1, hour=9, minute=0),  # 1st of month at 9 AM
     }
 }
 
 def send_email(to_address, subject, body_content, is_html=False, attachment_name=None, attachment_data=None):
+    """Send email using configured SMTP server or fallback to localhost"""
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = "admin@hospital.com"
+    msg['From'] = os.environ.get("SENDER_EMAIL", "admin@hospital.com")
     msg['To'] = to_address
 
     if is_html:
@@ -78,8 +99,23 @@ def send_email(to_address, subject, body_content, is_html=False, attachment_name
             msg.add_attachment(attachment_data, maintype='application', subtype='pdf', filename=attachment_name)
 
     try:
-        with smtplib.SMTP('localhost', 1025) as server:
-            server.send_message(msg)
+        smtp_server = os.environ.get("SMTP_SERVER", "localhost")
+        smtp_port = int(os.environ.get("SMTP_PORT", 1025))
+        
+        if smtp_server != "localhost":
+            # Production email service
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if smtp_port == 587:
+                    server.starttls()
+                username = os.environ.get("SMTP_USERNAME")
+                password = os.environ.get("SMTP_PASSWORD")
+                if username and password:
+                    server.login(username, password)
+                server.send_message(msg)
+        else:
+            # Development fallback
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.send_message(msg)
     except Exception as e:
         print(f"Failed to send email to {to_address}. Error: {e}")
 
@@ -216,6 +252,23 @@ def export_patient_history(patient_id):
         send_email(patient.email, subject, body, attachment_name="medical_history.csv", attachment_data=csv_data)
         
         return "Export saved and sent successfully."
+
+# Health check endpoint for monitoring
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint for load balancers and monitoring"""
+    try:
+        # Check database connection
+        db.session.execute("SELECT 1")
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+    
+    return jsonify({
+        "status": "healthy" if db_status == "healthy" else "unhealthy",
+        "database": db_status,
+        "version": "2.0.0"
+    }), 200 if db_status == "healthy" else 503
 
 
 @app.route("/api/login", methods=["POST"], endpoint="api_login")
@@ -761,4 +814,11 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         create_admin()
-    app.run(debug=app.config.get("DEBUG", False))
+    
+    # Use Gunicorn for production, Flask dev server for development
+    if os.environ.get("FLASK_ENV") == "production":
+        print("Running in PRODUCTION mode")
+        app.run(debug=False, host="0.0.0.0", port=5000)
+    else:
+        print("Running in DEVELOPMENT mode")
+        app.run(debug=app.config.get("DEBUG", False), host="127.0.0.1", port=5000)

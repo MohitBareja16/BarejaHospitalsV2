@@ -8,34 +8,73 @@ A comprehensive, multi-role web application built to streamline hospital operati
 * **Patient:** Browses available doctors by specialization, books appointments (with double-booking prevention), processes dummy payments, and downloads their medical history.
 
 ## Technical Stack
-* **Frontend:** Vue.js 3, Bootstrap 5, Custom CSS
-* **Backend:** Flask, Flask-RESTful, Flask-JWT-Extended
-* **Database:** SQLite (managed via Flask-SQLAlchemy)
-* **Caching & Broker:** Redis (Flask-Caching)
-* **Background Jobs:** Celery (Beat scheduling for daily reminders and monthly PDF reports)
+* **Frontend:** Vue.js 3, Bootstrap 5, Custom CSS, Vite
+* **Backend:** Flask, Flask-RESTful, Flask-JWT-Extended, SQLAlchemy
+* **Database:** SQLite (development) / PostgreSQL (production)
+* **Caching & Broker:** Redis (Flask-Caching, Celery)
+* **Background Jobs:** Celery with Beat scheduler
+* **Deployment:** Docker, Gunicorn, Nginx
+* **Production Ready:** Environment variables, CORS config, health checks
 
 ## Installation & Setup
 
-### 1. Backend Setup
-1. Navigate to the `backend` directory.
-2. Create a virtual environment: `python -m venv venv`
-3. Activate the virtual environment:
-   * Windows: `venv\Scripts\activate`
-   * Mac/Linux: `source venv/bin/activate`
-4. Install dependencies: `pip install -r requirements.txt`
-5. Seed the database: `python seed.py`
-6. Start the Flask server: `python app.py`
+### Local Development
 
-### 2. Redis & Celery Setup
-1. Ensure Redis is installed and running on `localhost:6379`.
-2. Open a new terminal, activate the backend virtual environment, and start the Celery worker:
-   `celery -A app.celery worker --loglevel=info`
-3. Open another terminal, activate the environment, and start the Celery Beat scheduler:
-   `celery -A app.celery beat --loglevel=info`
+#### 1. Backend Setup
+```bash
+cd backend
+python -m venv venv
 
-### 3. Frontend Setup
-1. Navigate to the `frontend` directory.
-2. Install dependencies: `npm install`
-3. Start the development server: `npm run dev`
+# Activate (choose based on OS)
+source venv/bin/activate      # Linux/Mac
+venv\Scripts\activate          # Windows
 
-Have Fun Exploring my Website - BarejaHospitals
+pip install -r requirements.txt
+python seed.py                 # Initialize database with demo data
+python app.py                  # Start server at http://localhost:5000
+```
+
+#### 2. Redis & Celery Setup
+```bash
+# Terminal 2 - Celery Worker
+source venv/bin/activate
+celery -A app.celery worker --loglevel=info
+
+# Terminal 3 - Celery Beat (scheduled tasks)
+source venv/bin/activate
+celery -A app.celery beat --loglevel=info
+```
+
+#### 3. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev                    # Start at http://localhost:5173
+```
+
+**Default Credentials:**
+- Admin: `admin` / `admin`
+- Doctor: `drheart` / `password`
+
+### Production Deployment
+
+See [PRODUCTION_DEPLOYMENT.md](backend/PRODUCTION_DEPLOYMENT.md) for:
+- Docker Compose setup
+- Linux server manual deployment
+- Railway/Render deployment
+- Nginx reverse proxy configuration
+- SSL/HTTPS setup
+- Monitoring and logging
+
+## Deployment Guides
+
+- **Frontend:** [DEPLOYMENT.md](frontend/DEPLOYMENT.md) - Deploy to Vercel
+- **Backend:** [PRODUCTION_DEPLOYMENT.md](backend/PRODUCTION_DEPLOYMENT.md) - Deploy to Railway, Render, or self-hosted
+
+## API Documentation
+
+See [api.yaml](api.yaml) for OpenAPI specification.
+
+Health check endpoint: `GET /health`
+
+Have Fun Exploring - BarejaHospitals

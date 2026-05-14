@@ -1,0 +1,17 @@
+[Unit]
+Description=Hospital Management System Flask App
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/home/your-user/hospital-management-system/backend
+ExecStart=/home/your-user/hospital-management-system/backend/venv/bin/gunicorn -c gunicorn_config.py wsgi:app
+Restart=always
+RestartSec=5s
+
+# Environment variables
+Environment="FLASK_ENV=production"
+Environment="FLASK_DEBUG=False"
+
+[Install]
+WantedBy=multi-user.target
