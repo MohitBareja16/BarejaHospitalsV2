@@ -3,11 +3,11 @@ import multiprocessing
 import os
 
 # Server socket
-bind = "0.0.0.0:5000"
+bind = f"0.0.0.0:{os.environ.get('PORT', 5000)}"
 backlog = 2048
 
 # Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+workers = 1  # Reduced for memory constraints on free tier
 worker_class = "sync"
 worker_connections = 1000
 timeout = 30
