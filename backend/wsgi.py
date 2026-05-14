@@ -9,7 +9,7 @@ from app import app, db, create_admin
 # Initialize database and admin on startup
 with app.app_context():
     db.create_all()
-    create_admin()
+    print("Database tables created in PostgreSQL!")
 
 if __name__ == "__main__":
     app.run()

@@ -40,9 +40,22 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 instance/
+celerybeat-schedule*
 
 # Misc
 .cache/
 .pytest_cache/
 coverage/
 exports/
+
+# Python
+*.py[cod]
+*.pyd
+*.pyo
+__pycache__/
+
+# Local environment
+venv/
+.env
+.env.local
+.env.*.local

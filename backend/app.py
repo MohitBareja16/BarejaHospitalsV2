@@ -1,9 +1,12 @@
 import os
 import csv
+import resend
+import base64
 import io
 import smtplib
 from datetime import datetime, date, timedelta
 from email.message import EmailMessage
+from flask_migrate import Migrate
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -27,7 +30,9 @@ load_dotenv()
 app = Flask(__name__)
 
 # CORS Configuration - restrict to specific origins in production
-cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:5173").split(",")
+cors_origins = [origin.strip().rstrip('/') for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin]
+if not cors_origins:
+    cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 CORS(app, resources={r"/api/*": {"origins": cors_origins, "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]}})
 
 # Database Configuration
@@ -45,10 +50,20 @@ app.config["PROPAGATE_EXCEPTIONS"] = True
 
 db.init_app(app)
 jwt = JWTManager(app)
+migrate = Migrate(app, db)
 
 app.config['CACHE_TYPE'] = 'RedisCache'
 app.config['CACHE_REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
 app.config['CACHE_DEFAULT_TIMEOUT'] = 300 
+
+app.config.update(
+    broker_use_ssl={
+        'ssl_cert_reqs': 'none' # Often required for cloud Redis providers
+    },
+    redis_backend_use_ssl={
+        'ssl_cert_reqs': 'none'
+    }
+)
 
 try:
     cache = Cache(app)
@@ -80,58 +95,63 @@ celery.conf.beat_schedule = {
     }
 }
 
+resend.api_key = os.environ.get("RESEND_API_KEY")
+
 def send_email(to_address, subject, body_content, is_html=False, attachment_name=None, attachment_data=None):
-    """Send email using configured SMTP server or fallback to localhost"""
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = os.environ.get("SENDER_EMAIL", "admin@hospital.com")
-    msg['To'] = to_address
+    """Send email using Resend API"""
+    params = {
+        "from": os.environ.get("SENDER_EMAIL", "onboarding@resend.dev"),
+        "to": [to_address],
+        "subject": subject,
+    }
 
+    # Set content type
     if is_html:
-        msg.add_alternative(body_content, subtype='html')
+        params["html"] = body_content
     else:
-        msg.set_content(body_content)
+        params["text"] = body_content
 
+    # Handle Attachments (Resend expects base64 strings for content)
     if attachment_data and attachment_name:
-        if attachment_name.endswith('.csv'):
-            msg.add_attachment(attachment_data.encode('utf-8'), maintype='text', subtype='csv', filename=attachment_name)
-        elif attachment_name.endswith('.pdf'):
-            msg.add_attachment(attachment_data, maintype='application', subtype='pdf', filename=attachment_name)
+        # If data is already bytes (like your PDF buffer), encode it
+        if isinstance(attachment_data, bytes):
+            encoded_content = base64.b64encode(attachment_data).decode()
+        else:
+            # If it's a string (like CSV text), encode then base64
+            encoded_content = base64.b64encode(attachment_data.encode('utf-8')).decode()
+            
+        params["attachments"] = [
+            {
+                "filename": attachment_name,
+                "content": encoded_content,
+            }
+        ]
 
     try:
-        smtp_server = os.environ.get("SMTP_SERVER", "localhost")
-        smtp_port = int(os.environ.get("SMTP_PORT", 1025))
-        
-        if smtp_server != "localhost":
-            # Production email service
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
-                if smtp_port == 587:
-                    server.starttls()
-                username = os.environ.get("SMTP_USERNAME")
-                password = os.environ.get("SMTP_PASSWORD")
-                if username and password:
-                    server.login(username, password)
-                server.send_message(msg)
-        else:
-            # Development fallback
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
-                server.send_message(msg)
+        response = resend.Emails.send(params)
+        return response
     except Exception as e:
-        print(f"Failed to send email to {to_address}. Error: {e}")
+        print(f"Resend failed to send email to {to_address}. Error: {e}")
 
 @celery.task
 def send_daily_reminders():
     with app.app_context():
         today = date.today()
+        # Filtering for today's scheduled appointments
         appointments = Appointment.query.filter_by(date_scheduled=today, status="Scheduled").all()
         
         for appt in appointments:
             patient = appt.patient
             if patient and patient.email:
                 subject = f"Reminder: Your Appointment Today at {appt.time_scheduled.strftime('%I:%M %p')}"
-                body = f"Hello {patient.full_name},\n\nThis is a reminder that you have a scheduled visit to the hospital today with Dr. {appt.doctor.full_name} at {appt.time_scheduled.strftime('%I:%M %p')}.\n\nPlease arrive 10 minutes early.\n\nRegards,\nHospital Admin"
-                send_email(patient.email, subject, body)
-        return "Daily reminders sent."
+                body = (f"Hello {patient.full_name},\n\n"
+                        f"This is a reminder for your visit with Dr. {appt.doctor.full_name} "
+                        f"at {appt.time_scheduled.strftime('%I:%M %p')}.\n\n"
+                        "Please arrive 10 minutes early.")
+                
+                # Using the updated helper
+                send_email(patient.email, subject, body, is_html=False)
+        return f"Daily reminders sent to {len(appointments)} patients."
 
 @celery.task
 def send_monthly_reports():

@@ -6,8 +6,16 @@ import random
 
 def seed_database():
     with app.app_context():
-        print("🗑️  Dropping all existing tables...")
-        db.drop_all()
+        print("🧹 Clearing existing data...")
+        db.session.query(Treatment).delete()
+        db.session.query(Appointment).delete()
+        db.session.query(DoctorAvailability).delete()
+        db.session.query(Doctor).delete()
+        db.session.query(Patient).delete()
+        db.session.query(Admin).delete()
+        db.session.query(Department).delete()
+        db.session.query(User).delete()
+        db.session.commit()
         
         print("📦 Creating new tables...")
         db.create_all()
