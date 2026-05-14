@@ -37,6 +37,7 @@ python-dotenv==1.2.1
 PyJWT==2.12.1
 redis==7.4.0
 requests==2.33.1
+resend==1.0.0
 six==1.17.0
 SQLAlchemy==2.0.44
 Werkzeug==3.1.3
